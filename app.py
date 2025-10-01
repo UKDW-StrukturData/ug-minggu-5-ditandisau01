@@ -1,40 +1,65 @@
 import csv
+import io
 import streamlit as st
+import pandas as pd
 
 # --- Fungsi untuk load data ---
-def load_news(filename):
-    """Baca file news_data.csv ke list of dict"""
-    # TODO: buka file CSV (filename) dan baca dengan csv.DictReader
-    # kembalikan hasilnya dalam bentuk list
-    pass
+def load_news(uploaded_file):
+    """Baca file berita dari file uploader"""
+    try:
+        reader = csv.DictReader(io.StringIO(uploaded_file.getvalue().decode('utf-8')))
+        berita = []
+        for row in reader:
+            berita.append({
+                "IdBerita": (row.get("IdBerita") or "").strip(),
+                "Headline": (row.get("Headline") or "").strip(),
+                "Content": (row.get("Content") or "").strip(),
+            })
+        return berita
+    except Exception as e:
+        st.error(f"Gagal membaca file berita: {e}")
+        return []
 
-def load_comments(filename):
-    """Baca file comment_news.csv ke list of dict"""
-    # TODO: sama seperti load_news tapi untuk file komentar
-    pass
+def load_comments(uploaded_file):
+    """Baca file komentar dari file uploader"""
+    try:
+        reader = csv.DictReader(io.StringIO(uploaded_file.getvalue().decode('utf-8')))
+        komen = []
+        for row in reader:
+            komen.append({
+                "IdKomentar": (row.get("IdKomentar") or "").strip(),
+                "IdBerita": (row.get("IdBerita") or "").strip(),
+                "Komentar": (row.get("Komentar") or "").strip(),
+                "Rating": float(row.get("Rating") or 0),
+            })
+        return komen
+    except Exception as e:
+        st.error(f"Gagal membaca file komentar: {e}")
+        return []
 
 # --- Fungsi untuk memproses data ---
 def process_data(news_list, comments_list):
-    """
-    Gabungkan berita dan komentar,
-    hitung jumlah komentar & rata-rata rating.
-    Hasilnya list of dict.
-    """
-    # TODO: Buat dictionary untuk kumpulkan komentar per idBerita
     comments_per_news = {}
 
-    # TODO: isi comments_per_news dari comments_list
-    # hint: per idBerita simpan ratings (list) dan count
+    for c in comments_list:
+        idb = c['IdBerita']
+        rating = c['Rating']
+        if idb not in comments_per_news:
+            comments_per_news[idb] = {'ratings': [], 'count': 0}
+        comments_per_news[idb]['ratings'].append(rating)
+        comments_per_news[idb]['count'] += 1
 
-    # TODO: Buat list hasil gabungan
     result = []
     for n in news_list:
-        idb = n['idBerita']
+        idb = n['IdBerita']
         headline = n['Headline']
-        # TODO: cek apakah idb ada di comments_per_news,
-        # hitung rata-rata rating dan jumlah komentar
-        rata = 0  # ganti dengan hitungan
-        jumlah = 0  # ganti dengan hitungan
+        if idb in comments_per_news:
+            ratings = comments_per_news[idb]['ratings']
+            jumlah = comments_per_news[idb]['count']
+            rata = sum(ratings) / jumlah if jumlah > 0 else 0
+        else:
+            rata = 0
+            jumlah = 0
         result.append({
             'ID Berita': idb,
             'Headline': headline,
@@ -42,28 +67,43 @@ def process_data(news_list, comments_list):
             'Jumlah Komentar': jumlah
         })
 
-    # --- Urutkan berdasarkan rating pakai fungsi biasa ---
-    def ambil_rating(item):
-        return item['Rata-rata Rating']
-
-    # TODO: urutkan result berdasarkan ambil_rating reverse=True
+    result.sort(key=lambda item: (item['Jumlah Komentar'], item['Rata-rata Rating']), reverse=True)
     return result
 
-# --- Fungsi untuk tampilkan di Streamlit ---
+# --- Fungsi utama Streamlit ---
 def main():
-    st.title("Analisis Sentimen & Popularitas Berita")
-    st.write("Menampilkan ID, Headline, Rata-rata Rating, dan Jumlah Komentar, diurutkan dari rating tertinggi.")
+    st.set_page_config(page_title="Analisis Berita", layout="wide")
+    st.title("📊 Analisis Sentimen & Popularitas Berita")
+    st.write("Unggah file berita dan komentar untuk melihat analisis rating dan jumlah komentar.")
 
-    # TODO: baca data CSV
-    news_data = []     # ganti dengan pemanggilan load_news
-    comment_data = []  # ganti dengan pemanggilan load_comments
+    col1, col2 = st.columns(2)
+    with col1:
+        news_file = st.file_uploader("📄 Unggah file berita (CSV)", type="csv")
+    with col2:
+        comments_file = st.file_uploader("💬 Unggah file komentar (CSV)", type="csv")
 
-    # TODO: proses data
-    hasil = []  # ganti dengan pemanggilan process_data
+    if news_file and comments_file:
+        news_list = load_news(news_file)
+        comments_list = load_comments(comments_file)
 
-    # TODO: tampilkan tabel di Streamlit
-    # hint: gunakan st.table(hasil)
-    pass
+        if news_list and comments_list:
+            hasil = process_data(news_list, comments_list)
+            df_hasil = pd.DataFrame(hasil)
 
-if __name__ == '__main__':
+            st.subheader("📈 Hasil Analisis")
+            st.dataframe(df_hasil, use_container_width=True)
+
+            st.markdown("### 🔍 Statistik Tambahan")
+            total_berita = len(news_list)
+            total_komentar = len(comments_list)
+            berita_tanpa_komentar = sum(1 for item in hasil if item['Jumlah Komentar'] == 0)
+
+            st.metric("Total Berita", total_berita)
+            st.metric("Total Komentar", total_komentar)
+            st.metric("Berita Tanpa Komentar", berita_tanpa_komentar)
+
+        else:
+            st.warning("Pastikan kedua file memiliki format yang benar dan tidak kosong.")
+
+if __name__ == "__main__":
     main()
